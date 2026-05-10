@@ -22,9 +22,15 @@ class EnvConfig:
     min_spawn_angle: float = 10.0    # Minimum launch angle (degrees)
     max_spawn_angle: float = 80.0    # Maximum launch angle (degrees)
     
+    # Distractors
+    max_clouds: int = 20
+    max_birds: int = 5
+    cloud_min_y: float = 150.0       # Minimum height for clouds (gives reaction time below them)
+    cloud_max_y: float = 300.0       # Maximum height for clouds
+    
     # World & Observation
     radar_radius: float = 256.0
-    protected_zone_width: float = 100.0 # x in [-40, 40]
+    protected_zone_width: float = 80.0 # x in [-40, 40]
     obs_width: int = 512
     obs_height: int = 256
     

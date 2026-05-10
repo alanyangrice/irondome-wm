@@ -63,6 +63,31 @@ class Missile:
         
         self.trail.append((self.x, self.y))
 
+class Cloud:
+    def __init__(self, x: float, y: float, vx: float, size: float, alpha: int):
+        self.x = x
+        self.y = y
+        self.vx = vx
+        self.size = size
+        self.alpha = alpha
+
+    def step(self, config):
+        self.x += self.vx * config.dt
+
+class Bird:
+    def __init__(self, x: float, y: float, vx: float, vy_amp: float, vy_freq: float):
+        self.x = x
+        self.y = y
+        self.vx = vx
+        self.vy_amp = vy_amp
+        self.vy_freq = vy_freq
+        self.t = 0.0
+
+    def step(self, config):
+        self.x += self.vx * config.dt
+        self.y += math.sin(self.t * self.vy_freq) * self.vy_amp * config.dt
+        self.t += config.dt
+
 def point_line_distance(px: float, py: float, lx1: float, ly1: float, lx2: float, ly2: float) -> float:
     """Distance from point (px, py) to line segment (lx1, ly1)-(lx2, ly2)"""
     line_mag = math.hypot(lx2 - lx1, ly2 - ly1)
@@ -169,3 +194,30 @@ def spawn_missile(config, np_random) -> Missile:
     vy = v0 * math.sin(theta)
     
     return Missile(x_start, y_start, vx, vy)
+
+def spawn_cloud(config, np_random) -> Cloud:
+    # Spawn just outside the radar so they enter quickly
+    if np_random.random() < 0.5:
+        x = -config.radar_radius - 100
+        vx = np_random.uniform(2, 6) # Much slower
+    else:
+        x = config.radar_radius + 100
+        vx = np_random.uniform(-6, -2) # Much slower
+        
+    y = np_random.uniform(config.cloud_min_y, config.cloud_max_y)
+    size = np_random.uniform(40, 100) # Larger clouds
+    alpha = 255 # Solid clouds to block radar
+    return Cloud(x, y, vx, size, alpha)
+
+def spawn_bird(config, np_random) -> Bird:
+    if np_random.random() < 0.5:
+        x = -config.radar_radius - 100
+        vx = np_random.uniform(15, 30)
+    else:
+        x = config.radar_radius + 100
+        vx = np_random.uniform(-30, -15)
+        
+    y = np_random.uniform(50, config.radar_radius - 50)
+    vy_amp = np_random.uniform(5, 15)
+    vy_freq = np_random.uniform(1, 3)
+    return Bird(x, y, vx, vy_amp, vy_freq)

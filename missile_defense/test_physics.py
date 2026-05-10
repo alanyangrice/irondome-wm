@@ -41,9 +41,11 @@ def test_physics():
     
     # Move it inside radar
     m.x = -50
-    m.y = 100 # Distance 111 < 256
+    m.y = 50 # Distance 70 < 256. Also y=50 is below cloud_min_y (100) so it won't be blocked by random clouds
+    # Clear clouds for this test to ensure it's not randomly blocked
+    env.unwrapped.clouds = []
     obs, _, _, _, _ = env.step(np.array([0.0, -1.0]))
-    red_pixels = np.sum((obs[:, :, 0] == 255) & (obs[:, :, 1] == 50))
+    red_pixels = np.sum((obs[:, :, 0] == 255) & (obs[:, :, 1] == 100)) # Missile core is (255, 100, 50)
     assert red_pixels > 0, "Missile should be visible"
     
     print("Test 2 Passed: Radar radius works.")
@@ -104,7 +106,9 @@ def test_physics():
     
     # Test 6: Laser max range
     env.reset()
-    m = missile_defense.physics.Missile(x=0, y=50, vx=0, vy=0) # Directly above turret, outside laser (32) but inside radar (256)
+    m = missile_defense.physics.Missile(x=0, y=80, vx=0, vy=0) # Directly above turret, outside laser (32) but inside radar (256)
+    # Clear clouds so it doesn't get blocked
+    env.unwrapped.clouds = []
     env.unwrapped.missiles.append(m)
     env.step(np.array([0.0, 1.0])) # Fire
     assert m.alive, "Missile outside laser range should not be destroyed"

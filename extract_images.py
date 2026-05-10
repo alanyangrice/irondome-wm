@@ -31,6 +31,8 @@ def extract_frames():
         env.unwrapped.missiles, 
         env.unwrapped.last_laser_fired, 
         env.unwrapped.explosions, 
+        env.unwrapped.clouds,
+        env.unwrapped.birds,
         env.unwrapped.score, 
         env.unwrapped.steps
     )

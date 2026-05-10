@@ -3,7 +3,7 @@ from gymnasium.spaces import Box
 import numpy as np
 
 from missile_defense.config import DEFAULT_CONFIG
-from missile_defense.physics import Turret, spawn_missile, check_laser_hits
+from missile_defense.physics import Turret, spawn_missile, check_laser_hits, spawn_cloud, spawn_bird
 from missile_defense.renderer import Renderer
 
 class MissileDefenseEnv(gym.Env):
@@ -29,6 +29,8 @@ class MissileDefenseEnv(gym.Env):
         self.turret = None
         self.missiles = []
         self.explosions = [] # list of [x, y, age]
+        self.clouds = []
+        self.birds = []
         
         self.steps = 0
         self.score = 0.0
@@ -44,6 +46,18 @@ class MissileDefenseEnv(gym.Env):
         self.turret = Turret(self.config)
         self.missiles = []
         self.explosions = []
+        self.clouds = []
+        self.birds = []
+        
+        # Pre-populate some clouds and birds
+        for _ in range(self.config.max_clouds):
+            self.clouds.append(spawn_cloud(self.config, self.np_random))
+            # Randomize their initial x positions across the screen
+            self.clouds[-1].x = self.np_random.uniform(-self.config.radar_radius, self.config.radar_radius)
+            
+        for _ in range(self.config.max_birds):
+            self.birds.append(spawn_bird(self.config, self.np_random))
+            self.birds[-1].x = self.np_random.uniform(-self.config.radar_radius, self.config.radar_radius)
         
         self.steps = 0
         self.score = 0.0
@@ -132,7 +146,28 @@ class MissileDefenseEnv(gym.Env):
                 new_explosions.append(ex)
         self.explosions = new_explosions
         
-        # 7. Check Truncation
+        # 7. Update Clouds and Birds
+        alive_clouds = []
+        for c in self.clouds:
+            c.step(self.config)
+            if abs(c.x) < self.config.radar_radius + 150:
+                alive_clouds.append(c)
+        self.clouds = alive_clouds
+        
+        while len(self.clouds) < self.config.max_clouds:
+            self.clouds.append(spawn_cloud(self.config, self.np_random))
+            
+        alive_birds = []
+        for b in self.birds:
+            b.step(self.config)
+            if abs(b.x) < self.config.radar_radius + 150:
+                alive_birds.append(b)
+        self.birds = alive_birds
+        
+        while len(self.birds) < self.config.max_birds:
+            self.birds.append(spawn_bird(self.config, self.np_random))
+        
+        # 8. Check Truncation
         if self.steps >= self.config.max_steps:
             truncated = True
             
@@ -148,14 +183,14 @@ class MissileDefenseEnv(gym.Env):
         return obs, reward, terminated, truncated, info
 
     def _get_obs(self) -> np.ndarray:
-        return self.renderer.render_obs(self.turret, self.missiles, self.last_laser_fired, self.explosions)
+        return self.renderer.render_obs(self.turret, self.missiles, self.last_laser_fired, self.explosions, self.clouds, self.birds)
 
     def render(self):
         if self.render_mode == "rgb_array":
             return self._get_obs()
         elif self.render_mode == "human":
             img = self.renderer.render_human(
-                self.turret, self.missiles, self.last_laser_fired, self.explosions, self.score, self.steps
+                self.turret, self.missiles, self.last_laser_fired, self.explosions, self.clouds, self.birds, self.score, self.steps
             )
             return img
 
