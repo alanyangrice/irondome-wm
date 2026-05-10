@@ -4,7 +4,7 @@ A Gymnasium environment for a 2D Iron Dome-style missile defense game. This envi
 
 ## Overview
 
-A ground turret fires a hitscan laser to intercept incoming ballistic missiles. The agent observes a 256x128 pixel semi-circular radar view (the "radar"). The goal is to survive as long as possible by intercepting missiles before they hit the ground within the protected zone.
+A ground turret fires a hitscan laser to intercept incoming ballistic missiles. The agent observes a 512x256 pixel semi-circular radar view (the "radar"). The goal is to survive as long as possible by intercepting missiles before they hit the ground within the protected zone.
 
 ## Installation
 
@@ -33,14 +33,14 @@ python -m missile_defense.collect_data --episodes 100 --out data/random_rollouts
 ```
 
 This will save compressed `.npz` files in the `data/random_rollouts` directory. Each file contains:
-- `obs`: The 256x128 RGB images (shape: `[steps, 128, 256, 3]`, dtype: `uint8`)
+- `obs`: The 512x256 RGB images (shape: `[steps, 256, 512, 3]`, dtype: `uint8`)
 - `action`: The continuous actions taken (shape: `[steps, 2]`, dtype: `float32`)
 - `reward`: The rewards received (shape: `[steps]`, dtype: `float32`)
 - `done`: Whether the episode ended (shape: `[steps]`, dtype: `bool`)
 
 ### Extracting Sample Images
 
-If you want to view the actual 256x128 pixel observations that the agent sees, you can extract frames from the collected data:
+If you want to view the actual 512x256 pixel observations that the agent sees, you can extract frames from the collected data:
 
 ```bash
 python extract_images.py
@@ -61,7 +61,7 @@ python -m missile_defense.test_physics
 - **Action Space**: `Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)`
   - `a[0]`: Turret rotation
   - `a[1]`: Fire laser (fires when `> 0`)
-- **Observation Space**: `Box(low=0, high=255, shape=(128, 256, 3), dtype=np.uint8)`
+- **Observation Space**: `Box(low=0, high=255, shape=(256, 512, 3), dtype=np.uint8)`
 - **Rewards**:
   - `+1.0`: Missile destroyed
   - `-10.0`: Missile impacts the Protected Zone (Episode ends)

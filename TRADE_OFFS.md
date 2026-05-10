@@ -2,11 +2,11 @@
 
 Here are the key design trade-offs and simplifications we made while building this environment, and why we made them:
 
-### 1. Observation Space Size (256x128 vs 64x64)
+### 1. Observation Space Size (512x256 vs 64x64)
 
-- **Trade-off:** We chose a 256x128 observation space to perfectly fit a 128-unit radius radar semi-circle without wasting pixels or squishing the aspect ratio.
-- **Why:** It makes the physics-to-pixel mapping exactly 1:1, making debugging and rendering much easier.
-- **Cost:** The original World Models paper used 64x64 images (4,096 pixels). Our images are 32,768 pixels (8x larger). This will significantly increase the compute required to train the VAE and the MDN-RNN. We may need to downscale the images later.
+- **Trade-off:** We chose a massive 512x256 observation space to perfectly fit a 256-unit radius radar semi-circle without wasting pixels or squishing the aspect ratio.
+- **Why:** It makes the physics-to-pixel mapping exactly 1:1, making debugging and rendering much easier, and provides extremely sharp, high-resolution visuals for the agent.
+- **Cost:** The original World Models paper used 64x64 images (4,096 pixels). Our images are 131,072 pixels (32x larger). This will require a massive VAE and significantly more compute to train the MDN-RNN. (Since we have an RTX 5090, compute is not a bottleneck).
 
 ### 2. Hitscan Laser vs Projectile Interceptors
 
@@ -20,10 +20,10 @@ Here are the key design trade-offs and simplifications we made while building th
 - **Why:** Without a cap, missiles fired high into the air would accelerate under gravity for a long time and enter the 128-unit radar zone moving so fast that they cross the entire screen in just 2-3 frames. The agent (and the RNN) wouldn't have enough time to react or predict their path.
 - **Cost:** The physics are slightly unnatural. Missiles stop accelerating downwards at a certain point, breaking pure parabolic motion near the end of long flights.
 
-### 4. Constant Initial Launch Speed
+### 4. Variable Initial Launch Speeds
 
-- **Trade-off:** All missiles are fired with the exact same initial speed (`v0 = 70.0`). Trajectory variation comes entirely from changing the launch angle.
-- **Why:** It simplifies the spawning logic and ensures we can reliably calculate angles that will land within the radar zone.
+- **Trade-off:** All missiles are fired with the exact same initial speed (`v0 = 140.0`). Trajectory variation comes entirely from changing the launch angle.
+- **Why:** It simplifies the spawning logic. We pick a random target in the radar zone, then calculate the two possible angles (high arc and low arc) that will hit that target at the fixed speed, and randomly pick one.
 - **Cost:** Less diversity in the training data. The VAE and RNN won't have to learn to distinguish between "fast" and "slow" missile classes, only different angles.
 
 ### 5. Fixed Laser Cooldown
@@ -40,7 +40,7 @@ Here are the key design trade-offs and simplifications we made while building th
 
 ### 7. Radar Range vs Laser Range
 
-- **Trade-off:** The radar can see up to 128 units, but the laser can only shoot up to 64 units.
+- **Trade-off:** The radar can see up to 256 units, but the laser can only shoot up to 128 units.
 - **Why:** This creates a "tracking zone". The agent can see the missile entering the radar, but must wait for it to get closer before firing. This forces the RNN to track the missile's trajectory in memory while waiting for it to enter the kill zone, rather than just reflexively shooting it the moment it appears on screen.
 - **Cost:** Makes the task harder for the agent, as it requires patience and timing rather than just pointing and clicking immediately.
 

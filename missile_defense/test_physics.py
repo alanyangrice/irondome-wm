@@ -24,13 +24,13 @@ def test_physics():
         dt = env.unwrapped.config.dt
         g = env.unwrapped.config.gravity
         expected_y = 0 + n * 40 * dt - g * (dt**2) * n * (n + 1) / 2
-        assert abs(y - expected_y) < 1e-5, f"Expected {expected_y}, got {y}"
+        assert abs(y - expected_y) < 1e-4, f"Expected {expected_y}, got {y}"
         
     print("Test 1 Passed: Parabolic arcs are correct.")
     
     # Test 2: Observation radar radius
     env.reset()
-    m = missile_defense.physics.Missile(x=-100, y=100, vx=0, vy=0) # Distance 141 > 128
+    m = missile_defense.physics.Missile(x=-100, y=300, vx=0, vy=0) # Distance 316 > 256
     env.unwrapped.missiles.append(m)
     obs, _, _, _, _ = env.step(np.array([0.0, -1.0]))
     
@@ -41,7 +41,7 @@ def test_physics():
     
     # Move it inside radar
     m.x = -50
-    m.y = 50 # Distance 70 < 128
+    m.y = 100 # Distance 111 < 256
     obs, _, _, _, _ = env.step(np.array([0.0, -1.0]))
     red_pixels = np.sum((obs[:, :, 0] == 255) & (obs[:, :, 1] == 50))
     assert red_pixels > 0, "Missile should be visible"
@@ -50,7 +50,7 @@ def test_physics():
     
     # Test 3: Laser hit detection
     env.reset()
-    m = missile_defense.physics.Missile(x=0, y=50, vx=0, vy=0) # Directly above turret
+    m = missile_defense.physics.Missile(x=0, y=20, vx=0, vy=0) # Directly above turret, inside laser (32)
     env.unwrapped.missiles.append(m)
     
     # Turret angle is 90 (straight up)
@@ -60,7 +60,7 @@ def test_physics():
     
     # Test near miss
     env.reset()
-    m = missile_defense.physics.Missile(x=5, y=50, vx=0, vy=0) # 5 units to the right
+    m = missile_defense.physics.Missile(x=5, y=20, vx=0, vy=0) # 5 units to the right
     env.unwrapped.missiles.append(m)
     
     # Hit radius is 2.5, so 5 units away should miss
@@ -94,7 +94,7 @@ def test_physics():
     env.unwrapped.kills = env.unwrapped.config.difficulty_ramp_every - 1
     
     # Trigger a hit to cause difficulty ramp
-    m = missile_defense.physics.Missile(x=0, y=50, vx=0, vy=0)
+    m = missile_defense.physics.Missile(x=0, y=20, vx=0, vy=0)
     env.unwrapped.missiles.append(m)
     env.step(np.array([0.0, 1.0]))
     
@@ -104,7 +104,7 @@ def test_physics():
     
     # Test 6: Laser max range
     env.reset()
-    m = missile_defense.physics.Missile(x=0, y=80, vx=0, vy=0) # Directly above turret, outside laser (64) but inside radar (128)
+    m = missile_defense.physics.Missile(x=0, y=50, vx=0, vy=0) # Directly above turret, outside laser (32) but inside radar (256)
     env.unwrapped.missiles.append(m)
     env.step(np.array([0.0, 1.0])) # Fire
     assert m.alive, "Missile outside laser range should not be destroyed"

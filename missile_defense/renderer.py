@@ -96,7 +96,7 @@ class Renderer:
 
     def render_human(self, turret, missiles, laser_fired: bool, explosions: list, score: float, steps: int):
         """Renders a larger debug view showing the full world."""
-        w, h = 400, 400
+        w, h = 800, 800
         
         if self.human_surface is None:
             self.human_surface = pygame.display.set_mode((w, h))
@@ -176,8 +176,8 @@ class Renderer:
         obs_surf = pygame.surfarray.make_surface(np.transpose(obs, (1, 0, 2)))
         
         # Draw border
-        pygame.draw.rect(self.human_surface, (255, 255, 255), (w-266, 10, 256, 128), 1)
-        self.human_surface.blit(obs_surf, (w-266, 10))
+        pygame.draw.rect(self.human_surface, (255, 255, 255), (w-522, 10, 512, 256), 1)
+        self.human_surface.blit(obs_surf, (w-522, 10))
         
         pygame.display.flip()
         self.clock.tick(self.config.render_fps)

@@ -130,19 +130,19 @@ def spawn_missile(config, np_random) -> Missile:
     """
     Spawns a missile from off-screen, targeted at the radar ground span.
     """
-    # Launch x: either [-250, -150] or [150, 250]
-    # This ensures they always spawn outside the 128-unit radar radius
+    # Launch x: either [-1500, -1000] or [1000, 1500]
+    # This ensures they spawn way back
     if np_random.random() < 0.5:
-        x_start = np_random.uniform(-250, -150)
+        x_start = np_random.uniform(-1500, -1000)
     else:
-        x_start = np_random.uniform(150, 250)
+        x_start = np_random.uniform(1000, 1500)
         
     y_start = 0.0
     
-    # Target x: [-128, 128]
-    x_target = np_random.uniform(-128, 128)
+    # Target x: [-256, 256]
+    x_target = np_random.uniform(-256, 256)
     
-    # Calculate required angle for this range
+    # Calculate required angle for this range given fixed v0
     R = abs(x_target - x_start)
     v0 = config.missile_v0
     g = config.gravity
@@ -151,14 +151,14 @@ def spawn_missile(config, np_random) -> Missile:
     sin_2theta = (R * g) / (v0 ** 2)
     
     if sin_2theta > 1.0:
-        # Fallback: if unreachable (e.g., config changed), just shoot at 45 degrees
+        # Fallback: if unreachable (target too far for v0), shoot at 45 degrees for max range
         theta = math.pi / 4
     else:
         # Two possible angles: low trajectory or high trajectory
-        # Let's pick high trajectory for more air time
         theta1 = 0.5 * math.asin(sin_2theta)
         theta2 = math.pi / 2 - theta1
-        theta = theta2 if np_random.random() < 0.7 else theta1 # 70% high, 30% low
+        # Randomly choose between the high arc and low arc
+        theta = theta2 if np_random.random() < 0.5 else theta1
 
     # Direction
     if x_target < x_start:
