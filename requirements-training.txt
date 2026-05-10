@@ -1,0 +1,2 @@
+# Training stack for world_model/ (install in addition to gymnasium, numpy, pygame).
+torch>=2.1

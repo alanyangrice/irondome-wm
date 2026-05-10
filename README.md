@@ -14,6 +14,12 @@ Ensure you have Python 3.11+ and install the required dependencies:
 pip install gymnasium numpy pygame
 ```
 
+For **World Models** training (`world_model/`), also install PyTorch:
+
+```bash
+pip install -r requirements-training.txt
+```
+
 ## Running the Environment
 
 ### Human Debug View
@@ -47,6 +53,24 @@ python extract_images.py
 ```
 
 This will save `.png` images to the `data/sample_images/` directory.
+
+## World Models (VAE → MDN-RNN → Controller)
+
+Rollouts stay at **512×256** in `.npz`. The training dataloaders **resize bilinearly** to **128×64** by default (same **2∶1** aspect as the env) before the VAE. See **`world_model/PLAN.md`** for hyperparameters (e.g. **z=32**, **K=5**, **τ**, LSTM **256**), the **dream loop**, and the **reward head** on **M**.
+
+Train the vision model (writes `checkpoints/vae.pt` by default):
+
+```bash
+python -m world_model.vae.train --data data/random_rollouts --epochs 20 --ckpt-out checkpoints/vae.pt
+```
+
+Train the memory model on latent sequences (requires a VAE checkpoint):
+
+```bash
+python -m world_model.rnn.train --data data/random_rollouts --vae-ckpt checkpoints/vae.pt
+```
+
+Controller CMA-ES + full imagined rollouts: **`world_model/controller/train.py`** (stub until wired to dreams).
 
 ## Testing
 

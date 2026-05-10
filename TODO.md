@@ -18,6 +18,6 @@
 - **Simple Visuals:** Currently using basic geometric shapes (dots, lines, simple polygons) which might limit the complexity of features the VAE can learn.
 - **Fixed Initial Speed:** All missiles are fired with the same initial speed `v0`, relying only on angle variations for trajectory diversity.
 - **Hitscan Laser:** The laser is instantaneous (hitscan) rather than a projectile, simplifying interception logic but reducing realism.
-- **Laser Cooldown:** The laser has a fixed cooldown (currently 5 steps). We might want to revisit this later to allow for continuous beam firing or an overheating mechanic instead of a strict step-based cooldown.
+- **Laser Cooldown:** The laser has a fixed step cooldown (see `missile_defense/config.py`, currently **2** steps). We might want to revisit this later for overheating or continuous beam mechanics.
 - **2D Only:** The simulation is strictly 2D, ignoring depth.
-- **Capped Terminal Velocity:** Physics are slightly unnatural due to capping the falling velocity, which is necessary to ensure the agent has enough reaction time within the 128-radius radar.
+- **Capped Terminal Velocity:** Physics are slightly unnatural due to capping the falling velocity, which is necessary to ensure the agent has enough reaction time within the **256-unit** radar radius.
