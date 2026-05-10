@@ -104,10 +104,10 @@ def test_physics():
     
     # Test 6: Laser max range
     env.reset()
-    m = missile_defense.physics.Missile(x=0, y=150, vx=0, vy=0) # Directly above turret, outside radar (128)
+    m = missile_defense.physics.Missile(x=0, y=80, vx=0, vy=0) # Directly above turret, outside laser (64) but inside radar (128)
     env.unwrapped.missiles.append(m)
     env.step(np.array([0.0, 1.0])) # Fire
-    assert m.alive, "Missile outside radar range should not be destroyed"
+    assert m.alive, "Missile outside laser range should not be destroyed"
     
     print("Test 6 Passed: Laser max range works.")
     

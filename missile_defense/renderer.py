@@ -54,23 +54,23 @@ class Renderer:
             px, py = self.world_to_pixel(m.x, m.y, self.turret_px)
             pygame.draw.circle(self.obs_surface, (255, 50, 50), (px, py), 2)
             
-        # Draw turret
         # Base
         rect = pygame.Rect(self.turret_px[0] - 8, self.turret_px[1] - 8, 16, 8)
         pygame.draw.rect(self.obs_surface, (200, 200, 200), rect)
-        
-        # Barrel
+
+        # Barrel pivot point (top center of base)
+        pivot = (self.turret_px[0], self.turret_px[1] - 8)
         rad = math.radians(turret.angle)
         barrel_length = 12
-        bx = int(self.turret_px[0] + math.cos(rad) * barrel_length)
-        by = int(self.turret_px[1] - math.sin(rad) * barrel_length)
-        pygame.draw.line(self.obs_surface, (150, 150, 150), self.turret_px, (bx, by), 3)
+        bx = int(pivot[0] + math.cos(rad) * barrel_length)
+        by = int(pivot[1] - math.sin(rad) * barrel_length)
+        pygame.draw.line(self.obs_surface, (150, 150, 150), pivot, (bx, by), 3)
         
         # Draw laser
         if laser_fired:
-            lx = int(self.turret_px[0] + math.cos(rad) * self.radar_r)
-            ly = int(self.turret_px[1] - math.sin(rad) * self.radar_r)
-            pygame.draw.line(self.obs_surface, (50, 255, 50), self.turret_px, (lx, ly), 1)
+            lx = int(pivot[0] + math.cos(rad) * self.config.laser_radius)
+            ly = int(pivot[1] - math.sin(rad) * self.config.laser_radius)
+            pygame.draw.line(self.obs_surface, (50, 255, 50), pivot, (lx, ly), 1)
             
         # Draw explosions
         for ex, ey, age in explosions:
@@ -139,19 +139,20 @@ class Renderer:
         # Draw turret base
         rect = pygame.Rect(turret_px[0] - 10, turret_px[1] - 10, 20, 10)
         pygame.draw.rect(self.human_surface, (200, 200, 200), rect)
-        
-        # Draw turret barrel
+
+        # Barrel pivot point (top center of base)
+        pivot = (turret_px[0], turret_px[1] - 10)
         rad = math.radians(turret.angle)
         barrel_length = 15
-        bx = int(turret_px[0] + math.cos(rad) * barrel_length)
-        by = int(turret_px[1] - math.sin(rad) * barrel_length)
-        pygame.draw.line(self.human_surface, (150, 150, 150), turret_px, (bx, by), 4)
+        bx = int(pivot[0] + math.cos(rad) * barrel_length)
+        by = int(pivot[1] - math.sin(rad) * barrel_length)
+        pygame.draw.line(self.human_surface, (150, 150, 150), pivot, (bx, by), 4)
         
         # Draw laser
         if laser_fired:
-            lx = int(turret_px[0] + math.cos(rad) * self.radar_r)
-            ly = int(turret_px[1] - math.sin(rad) * self.radar_r)
-            pygame.draw.line(self.human_surface, (50, 255, 50), turret_px, (lx, ly), 1)
+            lx = int(pivot[0] + math.cos(rad) * self.config.laser_radius)
+            ly = int(pivot[1] - math.sin(rad) * self.config.laser_radius)
+            pygame.draw.line(self.human_surface, (50, 255, 50), pivot, (lx, ly), 1)
             
         # Draw explosions
         for ex, ey, age in explosions:

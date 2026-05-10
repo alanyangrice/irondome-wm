@@ -112,10 +112,10 @@ def check_laser_hits(turret: Turret, missiles: List[Missile], config) -> int:
             to_missile_y = m.y - turret.pos[1]
             dot = to_missile_x * dx + to_missile_y * dy
             
-            # Check if it's within radar range (laser max range)
+            # Check if it's within laser range
             dist_to_turret = math.hypot(to_missile_x, to_missile_y)
             
-            if dot > 0 and dist_to_turret <= config.radar_radius:
+            if dot > 0 and dist_to_turret <= config.laser_radius:
                 # It's a valid hit within range. Find the closest one to the turret.
                 if dist_to_turret < closest_dist_to_turret:
                     closest_dist_to_turret = dist_to_turret

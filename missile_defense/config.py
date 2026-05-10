@@ -11,6 +11,7 @@ class EnvConfig:
     omega_max: float = 5.0           # Max rotation per step (degrees)
     cooldown: int = 5                # Steps between shots
     hit_radius: float = 2.5          # Laser hit tolerance
+    laser_radius: float = 64.0       # Max range of the laser
     
     # Missiles
     spawn_interval: int = 60         # Initial steps between missile spawns
