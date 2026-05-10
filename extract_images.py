@@ -33,6 +33,7 @@ def extract_frames():
         env.unwrapped.explosions, 
         env.unwrapped.clouds,
         env.unwrapped.birds,
+        env.unwrapped.city,
         env.unwrapped.score, 
         env.unwrapped.steps
     )

@@ -1,92 +1,7 @@
 import math
-import numpy as np
-from collections import deque
-from typing import List, Tuple
-
-class Turret:
-    def __init__(self, config):
-        self.config = config
-        self.angle = 90.0  # Pointing straight up
-        self.cooldown_timer = 0
-        self.pos = (0.0, 0.0)
-
-    def reset(self):
-        self.angle = 90.0
-        self.cooldown_timer = 0
-
-    def step(self, action_rot: float, action_fire: float) -> bool:
-        """
-        Updates turret state. Returns True if a laser is fired this step.
-        action_rot: [-1, 1]
-        action_fire: > 0 to fire
-        """
-        # Update angle
-        delta_angle = action_rot * self.config.omega_max
-        self.angle += delta_angle
-        self.angle = np.clip(self.angle, 0.0, 180.0)
-
-        # Update cooldown
-        if self.cooldown_timer > 0:
-            self.cooldown_timer -= 1
-
-        # Fire laser
-        fired = False
-        if action_fire > 0 and self.cooldown_timer == 0:
-            fired = True
-            self.cooldown_timer = self.config.cooldown
-
-        return fired
-
-class Missile:
-    def __init__(self, x: float, y: float, vx: float, vy: float):
-        self.x = x
-        self.y = y
-        self.vx = vx
-        self.vy = vy
-        self.alive = True
-        self.trail = deque(maxlen=5)
-        self.trail.append((x, y))
-
-    def step(self, config):
-        if not self.alive:
-            return
-
-        # Gravity
-        self.vy -= config.gravity * config.dt
-        
-        # Terminal velocity (cap downward speed)
-        if self.vy < -config.terminal_velocity:
-            self.vy = -config.terminal_velocity
-
-        self.x += self.vx * config.dt
-        self.y += self.vy * config.dt
-        
-        self.trail.append((self.x, self.y))
-
-class Cloud:
-    def __init__(self, x: float, y: float, vx: float, size: float, alpha: int):
-        self.x = x
-        self.y = y
-        self.vx = vx
-        self.size = size
-        self.alpha = alpha
-
-    def step(self, config):
-        self.x += self.vx * config.dt
-
-class Bird:
-    def __init__(self, x: float, y: float, vx: float, vy_amp: float, vy_freq: float):
-        self.x = x
-        self.y = y
-        self.vx = vx
-        self.vy_amp = vy_amp
-        self.vy_freq = vy_freq
-        self.t = 0.0
-
-    def step(self, config):
-        self.x += self.vx * config.dt
-        self.y += math.sin(self.t * self.vy_freq) * self.vy_amp * config.dt
-        self.t += config.dt
+from typing import List
+from .entities.turret import Turret
+from .entities.missile import Missile
 
 def point_line_distance(px: float, py: float, lx1: float, ly1: float, lx2: float, ly2: float) -> float:
     """Distance from point (px, py) to line segment (lx1, ly1)-(lx2, ly2)"""
@@ -97,7 +12,6 @@ def point_line_distance(px: float, py: float, lx1: float, ly1: float, lx2: float
     u = ((px - lx1) * (lx2 - lx1) + (py - ly1) * (ly2 - ly1)) / (line_mag ** 2)
     
     # We want a ray, not just a segment.
-    # Actually, for a ray starting at (lx1, ly1) and going towards (lx2, ly2):
     if u < 0.0:
         # Behind the origin of the ray
         return math.hypot(px - lx1, py - ly1)
@@ -150,74 +64,3 @@ def check_laser_hits(turret: Turret, missiles: List[Missile], config) -> int:
         missiles[hit_idx].alive = False
         
     return hit_idx
-
-def spawn_missile(config, np_random) -> Missile:
-    """
-    Spawns a missile from off-screen, targeted at the radar ground span.
-    """
-    # Launch x: either [-1500, -1000] or [1000, 1500]
-    # This ensures they spawn way back
-    if np_random.random() < 0.5:
-        x_start = np_random.uniform(-1500, -1000)
-    else:
-        x_start = np_random.uniform(1000, 1500)
-        
-    y_start = 0.0
-    
-    # Target x: [-256, 256]
-    x_target = np_random.uniform(-256, 256)
-    
-    # Calculate required angle for this range given fixed v0
-    R = abs(x_target - x_start)
-    v0 = config.missile_v0
-    g = config.gravity
-    
-    # R = (v0^2 * sin(2*theta)) / g
-    sin_2theta = (R * g) / (v0 ** 2)
-    
-    if sin_2theta > 1.0:
-        # Fallback: if unreachable (target too far for v0), shoot at 45 degrees for max range
-        theta = math.pi / 4
-    else:
-        # Two possible angles: low trajectory or high trajectory
-        theta1 = 0.5 * math.asin(sin_2theta)
-        theta2 = math.pi / 2 - theta1
-        # Randomly choose between the high arc and low arc
-        theta = theta2 if np_random.random() < 0.5 else theta1
-
-    # Direction
-    if x_target < x_start:
-        vx = -v0 * math.cos(theta)
-    else:
-        vx = v0 * math.cos(theta)
-        
-    vy = v0 * math.sin(theta)
-    
-    return Missile(x_start, y_start, vx, vy)
-
-def spawn_cloud(config, np_random) -> Cloud:
-    # Spawn just outside the radar so they enter quickly
-    if np_random.random() < 0.5:
-        x = -config.radar_radius - 100
-        vx = np_random.uniform(2, 6) # Much slower
-    else:
-        x = config.radar_radius + 100
-        vx = np_random.uniform(-6, -2) # Much slower
-        
-    y = np_random.uniform(config.cloud_min_y, config.cloud_max_y)
-    size = np_random.uniform(40, 100) # Larger clouds
-    alpha = 255 # Solid clouds to block radar
-    return Cloud(x, y, vx, size, alpha)
-
-def spawn_bird(config, np_random) -> Bird:
-    if np_random.random() < 0.5:
-        x = -config.radar_radius - 100
-        vx = np_random.uniform(15, 30)
-    else:
-        x = config.radar_radius + 100
-        vx = np_random.uniform(-30, -15)
-        
-    y = np_random.uniform(50, config.radar_radius - 50)
-    vy_amp = np_random.uniform(5, 15)
-    vy_freq = np_random.uniform(1, 3)
-    return Bird(x, y, vx, vy_amp, vy_freq)

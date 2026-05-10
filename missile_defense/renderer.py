@@ -1,6 +1,7 @@
 import numpy as np
 import pygame
 import math
+from missile_defense.entities import Cloud, Bird, Missile, Turret, Explosion, City
 
 class Renderer:
     def __init__(self, config):
@@ -28,7 +29,7 @@ class Renderer:
         py = int(turret_px[1] - y)
         return (px, py)
 
-    def render_obs(self, turret, missiles, laser_fired: bool, explosions: list, clouds: list, birds: list) -> np.ndarray:
+    def render_obs(self, turret, missiles, laser_fired: bool, explosions: list, clouds: list, birds: list, city) -> np.ndarray:
         """Renders the 512x256 observation image."""
         self.obs_surface.fill((15, 20, 30)) # Very dark blue background instead of pure black
         
@@ -41,21 +42,11 @@ class Renderer:
             
         # Draw clouds
         for c in clouds:
-            px, py = self.world_to_pixel(c.x, c.y, self.turret_px)
-            # Draw a fluffy cloud using multiple circles
-            pygame.draw.circle(self.obs_surface, (60, 60, 70), (px, py), int(c.size))
-            pygame.draw.circle(self.obs_surface, (60, 60, 70), (px + int(c.size*0.6), py - int(c.size*0.3)), int(c.size*0.8))
-            pygame.draw.circle(self.obs_surface, (60, 60, 70), (px - int(c.size*0.6), py - int(c.size*0.3)), int(c.size*0.7))
-            pygame.draw.circle(self.obs_surface, (60, 60, 70), (px + int(c.size*1.1), py), int(c.size*0.6))
-            pygame.draw.circle(self.obs_surface, (60, 60, 70), (px - int(c.size*1.1), py), int(c.size*0.5))
+            c.draw(self.obs_surface, self.world_to_pixel, self.turret_px)
             
         # Draw birds
         for b in birds:
-            px, py = self.world_to_pixel(b.x, b.y, self.turret_px)
-            # Flapping wings based on b.t
-            wing_offset = int(math.sin(b.t * b.vy_freq * 2) * 5)
-            pygame.draw.line(self.obs_surface, (120, 120, 120), (px, py), (px - 6, py - 3 + wing_offset), 2)
-            pygame.draw.line(self.obs_surface, (120, 120, 120), (px, py), (px + 6, py - 3 + wing_offset), 2)
+            b.draw(self.obs_surface, self.world_to_pixel, self.turret_px)
         
         # Draw missiles and trails
         for m in missiles:
@@ -78,54 +69,22 @@ class Renderer:
             if blocked:
                 continue
                 
-            # Draw trail
-            if len(m.trail) > 1:
-                pts = [self.world_to_pixel(tx, ty, self.turret_px) for tx, ty in m.trail]
-                for i in range(len(pts) - 1):
-                    alpha = (i + 1) / len(pts)
-                    color = (int(255 * alpha), int(100 * alpha), int(50 * alpha))
-                    pygame.draw.line(self.obs_surface, color, pts[i], pts[i+1], 3) # Thicker trail
-            
-            # Draw missile
-            px, py = self.world_to_pixel(m.x, m.y, self.turret_px)
-            pygame.draw.circle(self.obs_surface, (255, 100, 50), (px, py), 4) # Thicker missile
-            # Inner core
-            pygame.draw.circle(self.obs_surface, (255, 255, 200), (px, py), 2)
+            m.draw(self.obs_surface, self.world_to_pixel, self.turret_px)
             
         # Draw ground
         ground_rect = pygame.Rect(0, self.turret_px[1], self.obs_w, self.obs_h - self.turret_px[1])
         pygame.draw.rect(self.obs_surface, (20, 30, 20), ground_rect) # Dark green ground
         pygame.draw.line(self.obs_surface, (50, 80, 50), (0, self.turret_px[1]), (self.obs_w, self.turret_px[1]), 2)
         
-        # Draw protected zone
-        pz_min = self.world_to_pixel(-self.config.protected_zone_width/2, 0, self.turret_px)[0]
-        pz_max = self.world_to_pixel(self.config.protected_zone_width/2, 0, self.turret_px)[0]
-        pygame.draw.line(self.obs_surface, (0, 200, 0), (pz_min, self.turret_px[1]), (pz_max, self.turret_px[1]), 4)
+        # Draw protected zone (City)
+        city.draw(self.obs_surface, self.world_to_pixel, self.turret_px)
         
-        # Base
-        rect = pygame.Rect(self.turret_px[0] - 8, self.turret_px[1] - 8, 16, 8)
-        pygame.draw.rect(self.obs_surface, (200, 200, 200), rect)
-
-        # Barrel pivot point (top center of base)
-        pivot = (self.turret_px[0], self.turret_px[1] - 8)
-        rad = math.radians(turret.angle)
-        barrel_length = 12
-        bx = int(pivot[0] + math.cos(rad) * barrel_length)
-        by = int(pivot[1] - math.sin(rad) * barrel_length)
-        pygame.draw.line(self.obs_surface, (150, 150, 150), pivot, (bx, by), 3)
+        # Draw turret and laser
+        turret.draw(self.obs_surface, self.world_to_pixel, self.turret_px)
         
-        # Draw laser
-        if laser_fired:
-            lx = int(pivot[0] + math.cos(rad) * self.config.laser_radius)
-            ly = int(pivot[1] - math.sin(rad) * self.config.laser_radius)
-            pygame.draw.line(self.obs_surface, (50, 255, 50), pivot, (lx, ly), 1)
-            
         # Draw explosions
-        for ex, ey, age in explosions:
-            px, py = self.world_to_pixel(ex, ey, self.turret_px)
-            radius = int(2 + age * 2)
-            color = (255, max(0, 255 - age * 40), 0)
-            pygame.draw.circle(self.obs_surface, color, (px, py), radius)
+        for ex in explosions:
+            ex.draw(self.obs_surface, self.world_to_pixel, self.turret_px)
             
         # Apply radar mask (semi-circle)
         img = pygame.surfarray.array3d(self.obs_surface)
@@ -142,7 +101,7 @@ class Renderer:
         
         return img
 
-    def render_human(self, turret, missiles, laser_fired: bool, explosions: list, clouds: list, birds: list, score: float, steps: int):
+    def render_human(self, turret, missiles, laser_fired: bool, explosions: list, clouds: list, birds: list, city, score: float, steps: int):
         """Renders a larger debug view showing the full world."""
         w, h = 800, 800
         
@@ -163,74 +122,39 @@ class Renderer:
             
         # Draw clouds
         for c in clouds:
-            px, py = self.world_to_pixel(c.x, c.y, turret_px)
-            pygame.draw.circle(self.human_surface, (60, 60, 70), (px, py), int(c.size))
-            pygame.draw.circle(self.human_surface, (60, 60, 70), (px + int(c.size*0.6), py - int(c.size*0.3)), int(c.size*0.8))
-            pygame.draw.circle(self.human_surface, (60, 60, 70), (px - int(c.size*0.6), py - int(c.size*0.3)), int(c.size*0.7))
-            pygame.draw.circle(self.human_surface, (60, 60, 70), (px + int(c.size*1.1), py), int(c.size*0.6))
-            pygame.draw.circle(self.human_surface, (60, 60, 70), (px - int(c.size*1.1), py), int(c.size*0.5))
+            c.draw(self.human_surface, self.world_to_pixel, turret_px)
             
         # Draw birds
         for b in birds:
-            px, py = self.world_to_pixel(b.x, b.y, turret_px)
-            wing_offset = int(math.sin(b.t * b.vy_freq * 2) * 5)
-            pygame.draw.line(self.human_surface, (120, 120, 120), (px, py), (px - 6, py - 3 + wing_offset), 2)
-            pygame.draw.line(self.human_surface, (120, 120, 120), (px, py), (px + 6, py - 3 + wing_offset), 2)
+            b.draw(self.human_surface, self.world_to_pixel, turret_px)
         
         # Draw ground
         ground_rect = pygame.Rect(0, turret_px[1], w, h - turret_px[1])
         pygame.draw.rect(self.human_surface, (20, 30, 20), ground_rect)
         pygame.draw.line(self.human_surface, (50, 80, 50), (0, turret_px[1]), (w, turret_px[1]), 2)
         
-        # Draw protected zone
-        pz_min = self.world_to_pixel(-self.config.protected_zone_width/2, 0, turret_px)[0]
-        pz_max = self.world_to_pixel(self.config.protected_zone_width/2, 0, turret_px)[0]
-        pygame.draw.line(self.human_surface, (0, 200, 0), (pz_min, turret_px[1]), (pz_max, turret_px[1]), 4)
+        # Draw protected zone (City)
+        city.draw(self.human_surface, self.world_to_pixel, turret_px)
         
         # Draw radar boundary
         pygame.draw.circle(self.human_surface, (50, 50, 50), turret_px, int(self.radar_r), 1)
         
         # Draw missiles
         for m in missiles:
-            if not m.alive:
-                continue
+            m.draw(self.human_surface, self.world_to_pixel, turret_px)
             
-            px, py = self.world_to_pixel(m.x, m.y, turret_px)
+            # Velocity vector (only in human view)
+            if m.alive:
+                px, py = self.world_to_pixel(m.x, m.y, turret_px)
+                vx_p, vy_p = self.world_to_pixel(m.x + m.vx*0.5, m.y + m.vy*0.5, turret_px)
+                pygame.draw.line(self.human_surface, (200, 100, 100), (px, py), (vx_p, vy_p), 1)
             
-            # Trail
-            if len(m.trail) > 1:
-                pts = [self.world_to_pixel(tx, ty, turret_px) for tx, ty in m.trail]
-                for i in range(len(pts) - 1):
-                    pygame.draw.line(self.human_surface, (150, 50, 50), pts[i], pts[i+1], 1)
-                    
-            pygame.draw.circle(self.human_surface, (255, 0, 0), (px, py), 3)
-            
-            # Velocity vector
-            vx_p, vy_p = self.world_to_pixel(m.x + m.vx*0.5, m.y + m.vy*0.5, turret_px)
-            pygame.draw.line(self.human_surface, (200, 100, 100), (px, py), (vx_p, vy_p), 1)
-            
-        # Draw turret base
-        rect = pygame.Rect(turret_px[0] - 10, turret_px[1] - 10, 20, 10)
-        pygame.draw.rect(self.human_surface, (200, 200, 200), rect)
-
-        # Barrel pivot point (top center of base)
-        pivot = (turret_px[0], turret_px[1] - 10)
-        rad = math.radians(turret.angle)
-        barrel_length = 15
-        bx = int(pivot[0] + math.cos(rad) * barrel_length)
-        by = int(pivot[1] - math.sin(rad) * barrel_length)
-        pygame.draw.line(self.human_surface, (150, 150, 150), pivot, (bx, by), 4)
+        # Draw turret and laser
+        turret.draw(self.human_surface, self.world_to_pixel, turret_px)
         
-        # Draw laser
-        if laser_fired:
-            lx = int(pivot[0] + math.cos(rad) * self.config.laser_radius)
-            ly = int(pivot[1] - math.sin(rad) * self.config.laser_radius)
-            pygame.draw.line(self.human_surface, (50, 255, 50), pivot, (lx, ly), 1)
-            
         # Draw explosions
-        for ex, ey, age in explosions:
-            px, py = self.world_to_pixel(ex, ey, turret_px)
-            pygame.draw.circle(self.human_surface, (255, max(0, 255 - age*40), 0), (px, py), int(3 + age*3))
+        for ex in explosions:
+            ex.draw(self.human_surface, self.world_to_pixel, turret_px)
             
         # Text overlay
         font = pygame.font.SysFont(None, 24)
@@ -243,7 +167,7 @@ class Renderer:
         self.human_surface.blit(cd_text, (10, 50))
         
         # Inset observation
-        obs = self.render_obs(turret, missiles, laser_fired, explosions, clouds, birds)
+        obs = self.render_obs(turret, missiles, laser_fired, explosions, clouds, birds, city)
         # obs is (128, 256, 3) -> (H, W, C)
         # Convert back to pygame surface (W, H, C)
         obs_surf = pygame.surfarray.make_surface(np.transpose(obs, (1, 0, 2)))

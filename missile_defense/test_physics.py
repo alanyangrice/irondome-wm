@@ -1,5 +1,6 @@
 import gymnasium as gym
 import missile_defense
+from missile_defense.entities import Missile
 import numpy as np
 import math
 
@@ -9,7 +10,7 @@ def test_physics():
     
     # Test 1: Parabolic arcs
     # Spawn a missile manually
-    m = missile_defense.physics.Missile(x=-100, y=0, vx=20, vy=40)
+    m = Missile(x=-100, y=0, vx=20, vy=40)
     env.unwrapped.missiles.append(m)
     
     # Record positions
@@ -30,7 +31,7 @@ def test_physics():
     
     # Test 2: Observation radar radius
     env.reset()
-    m = missile_defense.physics.Missile(x=-100, y=300, vx=0, vy=0) # Distance 316 > 256
+    m = Missile(x=-100, y=300, vx=0, vy=0) # Distance 316 > 256
     env.unwrapped.missiles.append(m)
     obs, _, _, _, _ = env.step(np.array([0.0, -1.0]))
     
@@ -52,7 +53,7 @@ def test_physics():
     
     # Test 3: Laser hit detection
     env.reset()
-    m = missile_defense.physics.Missile(x=0, y=20, vx=0, vy=0) # Directly above turret, inside laser (32)
+    m = Missile(x=0, y=20, vx=0, vy=0) # Directly above turret, inside laser (32)
     env.unwrapped.missiles.append(m)
     
     # Turret angle is 90 (straight up)
@@ -62,7 +63,7 @@ def test_physics():
     
     # Test near miss
     env.reset()
-    m = missile_defense.physics.Missile(x=5, y=20, vx=0, vy=0) # 5 units to the right
+    m = Missile(x=5, y=20, vx=0, vy=0) # 5 units to the right
     env.unwrapped.missiles.append(m)
     
     # Hit radius is 2.5, so 5 units away should miss
@@ -96,7 +97,7 @@ def test_physics():
     env.unwrapped.kills = env.unwrapped.config.difficulty_ramp_every - 1
     
     # Trigger a hit to cause difficulty ramp
-    m = missile_defense.physics.Missile(x=0, y=20, vx=0, vy=0)
+    m = Missile(x=0, y=20, vx=0, vy=0)
     env.unwrapped.missiles.append(m)
     env.step(np.array([0.0, 1.0]))
     
@@ -106,7 +107,7 @@ def test_physics():
     
     # Test 6: Laser max range
     env.reset()
-    m = missile_defense.physics.Missile(x=0, y=80, vx=0, vy=0) # Directly above turret, outside laser (32) but inside radar (256)
+    m = Missile(x=0, y=80, vx=0, vy=0) # Directly above turret, outside laser (32) but inside radar (256)
     # Clear clouds so it doesn't get blocked
     env.unwrapped.clouds = []
     env.unwrapped.missiles.append(m)

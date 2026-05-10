@@ -3,7 +3,8 @@ from gymnasium.spaces import Box
 import numpy as np
 
 from missile_defense.config import DEFAULT_CONFIG
-from missile_defense.physics import Turret, spawn_missile, check_laser_hits, spawn_cloud, spawn_bird
+from missile_defense.physics import check_laser_hits
+from missile_defense.entities import Turret, spawn_missile, spawn_cloud, spawn_bird, Explosion, City
 from missile_defense.renderer import Renderer
 
 class MissileDefenseEnv(gym.Env):
@@ -44,6 +45,7 @@ class MissileDefenseEnv(gym.Env):
         super().reset(seed=seed)
         
         self.turret = Turret(self.config)
+        self.city = City(self.config)
         self.missiles = []
         self.explosions = []
         self.clouds = []
@@ -107,7 +109,7 @@ class MissileDefenseEnv(gym.Env):
                 
                 # Add explosion
                 m = self.missiles[hit_idx]
-                self.explosions.append([m.x, m.y, 0])
+                self.explosions.append(Explosion(m.x, m.y))
                 
                 # Difficulty ramp
                 if self.kills % self.config.difficulty_ramp_every == 0:
@@ -119,50 +121,39 @@ class MissileDefenseEnv(gym.Env):
         # 5. Check Ground Impacts
         alive_missiles = []
         for m in self.missiles:
-            if not m.alive:
-                continue
-                
             if m.y <= 0:
+                m.alive = False
                 # Check if it hit the protected zone
                 if abs(m.x) <= self.config.protected_zone_width / 2:
                     reward -= 10.0
                     terminated = True
-                else:
-                    # Ignored non-threat
-                    pass
                 
                 # Add explosion on ground
-                self.explosions.append([m.x, 0, 0])
+                self.explosions.append(Explosion(m.x, 0))
             else:
                 alive_missiles.append(m)
                 
         self.missiles = alive_missiles
         
         # 6. Update Explosions
-        new_explosions = []
         for ex in self.explosions:
-            ex[2] += 1 # age
-            if ex[2] < 5:
-                new_explosions.append(ex)
-        self.explosions = new_explosions
+            ex.step(self.config)
+        self.explosions = [ex for ex in self.explosions if ex.alive]
         
         # 7. Update Clouds and Birds
-        alive_clouds = []
         for c in self.clouds:
             c.step(self.config)
-            if abs(c.x) < self.config.radar_radius + 150:
-                alive_clouds.append(c)
-        self.clouds = alive_clouds
-        
+        self.clouds = [c for c in self.clouds if abs(c.x) < self.config.radar_radius + 150]
+            
         while len(self.clouds) < self.config.max_clouds:
             self.clouds.append(spawn_cloud(self.config, self.np_random))
             
-        alive_birds = []
         for b in self.birds:
             b.step(self.config)
-            if abs(b.x) < self.config.radar_radius + 150:
-                alive_birds.append(b)
-        self.birds = alive_birds
+        self.birds = [b for b in self.birds if abs(b.x) < self.config.radar_radius + 150]
+            
+        while len(self.birds) < self.config.max_birds:
+            self.birds.append(spawn_bird(self.config, self.np_random))
         
         while len(self.birds) < self.config.max_birds:
             self.birds.append(spawn_bird(self.config, self.np_random))
@@ -183,14 +174,14 @@ class MissileDefenseEnv(gym.Env):
         return obs, reward, terminated, truncated, info
 
     def _get_obs(self) -> np.ndarray:
-        return self.renderer.render_obs(self.turret, self.missiles, self.last_laser_fired, self.explosions, self.clouds, self.birds)
+        return self.renderer.render_obs(self.turret, self.missiles, self.last_laser_fired, self.explosions, self.clouds, self.birds, self.city)
 
     def render(self):
         if self.render_mode == "rgb_array":
             return self._get_obs()
         elif self.render_mode == "human":
             img = self.renderer.render_human(
-                self.turret, self.missiles, self.last_laser_fired, self.explosions, self.clouds, self.birds, self.score, self.steps
+                self.turret, self.missiles, self.last_laser_fired, self.explosions, self.clouds, self.birds, self.city, self.score, self.steps
             )
             return img
 
