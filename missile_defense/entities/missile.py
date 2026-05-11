@@ -4,12 +4,17 @@ from collections import deque
 from .entity import Entity
 
 class Missile(Entity):
-    def __init__(self, x: float, y: float, vx: float, vy: float):
+    def __init__(self, x: float, y: float, vx: float, vy: float, max_hp: int = 1):
         self.x = x
         self.y = y
         self.vx = vx
         self.vy = vy
         self.alive = True
+        # HP system: each laser hit decrements `hp`; missile explodes when hp == 0.
+        # `max_hp` is stored so the renderer can tint the missile proportionally to
+        # remaining HP, giving the VAE a persistent visual cue for damage state.
+        self.max_hp = max(1, int(max_hp))
+        self.hp = self.max_hp
         self.trail = deque(maxlen=5)
         self.trail.append((x, y))
 
@@ -32,18 +37,34 @@ class Missile(Entity):
     def draw(self, surface, world_to_pixel_fn, turret_px):
         if not self.alive:
             return
-            
+
+        # HP-proportional tint: full HP = bright orange-red; lower HP = darker.
+        # We keep the inner-core highlight (255,255,200) constant so a tiny bright
+        # speck is always visible regardless of damage. This gives the VAE a
+        # persistent (not just one-frame) visual signal that a missile has been
+        # damaged.
+        hp_frac = self.hp / self.max_hp
+        outer_color = (
+            int(255 * hp_frac),
+            int(100 * hp_frac),
+            int(50 * hp_frac),
+        )
+
         # Draw trail
         if len(self.trail) > 1:
             pts = [world_to_pixel_fn(tx, ty, turret_px) for tx, ty in self.trail]
             for i in range(len(pts) - 1):
                 alpha = (i + 1) / len(pts)
-                color = (int(255 * alpha), int(100 * alpha), int(50 * alpha))
+                color = (
+                    int(outer_color[0] * alpha),
+                    int(outer_color[1] * alpha),
+                    int(outer_color[2] * alpha),
+                )
                 pygame.draw.line(surface, color, pts[i], pts[i+1], 3)
-        
+
         # Draw missile core
         px, py = world_to_pixel_fn(self.x, self.y, turret_px)
-        pygame.draw.circle(surface, (255, 100, 50), (px, py), 4)
+        pygame.draw.circle(surface, outer_color, (px, py), 4)
         pygame.draw.circle(surface, (255, 255, 200), (px, py), 2)
 
 def spawn_missile(config, np_random) -> Missile:
@@ -88,4 +109,4 @@ def spawn_missile(config, np_random) -> Missile:
         
     vy = v0 * math.sin(theta)
     
-    return Missile(x_start, y_start, vx, vy)
+    return Missile(x_start, y_start, vx, vy, max_hp=config.missile_hp)

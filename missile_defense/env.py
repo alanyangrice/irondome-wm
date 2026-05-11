@@ -101,22 +101,30 @@ class MissileDefenseEnv(gym.Env):
             m.step(self.config)
             
         # 4. Check Laser Hits
+        # iter3 semantics: each hit pays `hit_reward`. If the hit reduces the
+        # missile's HP to zero, it explodes (set alive=False, spawn explosion,
+        # award `kill_reward` bonus on top of `hit_reward`, count kill, possibly
+        # ramp difficulty). Otherwise the missile keeps falling at reduced HP.
+        # `check_laser_hits` no longer mutates the missile; we do all updates
+        # here so reward bookkeeping is in one place.
         if self.last_laser_fired:
             hit_idx = check_laser_hits(self.turret, self.missiles, self.config)
             if hit_idx != -1:
-                reward += self.config.kill_reward
-                self.kills += 1
-                
-                # Add explosion
                 m = self.missiles[hit_idx]
-                self.explosions.append(Explosion(m.x, m.y))
-                
-                # Difficulty ramp
-                if self.kills % self.config.difficulty_ramp_every == 0:
-                    self.current_spawn_interval = max(
-                        self.config.min_spawn_interval, 
-                        int(self.current_spawn_interval * 0.9)
-                    )
+                m.hp -= 1
+                reward += self.config.hit_reward
+                if m.hp <= 0:
+                    reward += self.config.kill_reward
+                    m.alive = False
+                    self.kills += 1
+                    self.explosions.append(Explosion(m.x, m.y))
+
+                    # Difficulty ramp on full kills only (not on intermediate hits).
+                    if self.kills % self.config.difficulty_ramp_every == 0:
+                        self.current_spawn_interval = max(
+                            self.config.min_spawn_interval,
+                            int(self.current_spawn_interval * 0.9)
+                        )
                     
         # 5. Check Ground Impacts (and drop laser-killed missiles)
         alive_missiles = []

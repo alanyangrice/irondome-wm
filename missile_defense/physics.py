@@ -23,8 +23,13 @@ def point_line_distance(px: float, py: float, lx1: float, ly1: float, lx2: float
 
 def check_laser_hits(turret: Turret, missiles: List[Missile], config) -> int:
     """
-    Checks if the laser hits any missiles. 
+    Checks if the laser hits any missiles.
     Returns the index of the hit missile, or -1 if none.
+
+    NOTE (iter3): this function no longer mutates the missile. Under the HP
+    system, the env decides whether a hit is a non-final hit (decrement HP) or
+    a final hit (set `alive=False`, spawn explosion). This function only
+    identifies the closest hit candidate.
     """
     # Ray direction
     rad = math.radians(turret.angle)
@@ -60,7 +65,4 @@ def check_laser_hits(turret: Turret, missiles: List[Missile], config) -> int:
                     closest_dist_to_turret = dist_to_turret
                     hit_idx = i
 
-    if hit_idx != -1:
-        missiles[hit_idx].alive = False
-        
     return hit_idx

@@ -160,11 +160,15 @@ class Renderer:
         font = pygame.font.SysFont(None, 24)
         score_text = font.render(f"Score: {score:.1f}", True, (255, 255, 255))
         steps_text = font.render(f"Steps: {steps}", True, (255, 255, 255))
-        cd_text = font.render(f"Cooldown: {turret.cooldown_timer}", True, (255, 255, 255))
-        
+        if turret.forced_cooldown_remaining > 0:
+            burst_str = f"Burst: REST ({turret.forced_cooldown_remaining})"
+        else:
+            burst_str = f"Burst: {turret.burst_count}/{turret.config.burst_limit}"
+        burst_text = font.render(burst_str, True, (255, 255, 255))
+
         self.human_surface.blit(score_text, (10, 10))
         self.human_surface.blit(steps_text, (10, 30))
-        self.human_surface.blit(cd_text, (10, 50))
+        self.human_surface.blit(burst_text, (10, 50))
         
         # Inset observation
         obs = self.render_obs(turret, missiles, laser_fired, explosions, clouds, birds, city)
