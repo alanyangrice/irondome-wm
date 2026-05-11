@@ -37,6 +37,14 @@ class EnvConfig:
     # Episode
     max_steps: int = 3000
     
+    # Rewards (shaping). These directly define the controller's objective.
+    # Watch sign conventions: penalties are negative, rewards are positive.
+    step_penalty: float = -0.01           # Per-timestep urgency pressure.
+    fire_penalty: float = -0.05           # Per-shot conservation pressure.
+    kill_reward: float = 1.0              # Per-missile interception bonus.
+    protected_zone_penalty: float = -10.0 # Terminal penalty when a missile hits the city.
+    non_protected_impact_reward: float = 0.0  # When a missile lands outside the city zone.
+    
     # Rendering
     render_fps: int = 30
 

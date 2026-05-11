@@ -56,21 +56,34 @@ This will save `.png` images to the `data/sample_images/` directory.
 
 ## World Models (VAE → MDN-RNN → Controller)
 
-Rollouts stay at **512×256** in `.npz`. The training dataloaders **resize bilinearly** to **128×64** by default (same **2∶1** aspect as the env) before the VAE. See **`world_model/PLAN.md`** for hyperparameters (e.g. **z=32**, **K=5**, **τ**, LSTM **256**), the **dream loop**, and the **reward head** on **M**.
+Rollouts stay at **512×256** in `.npz`. The training dataloaders **decompress + bilinear-resize** to **128×64** (same **2∶1** aspect as the env) **once at init** and keep frames as packed uint8 in RAM. See **`world_model/PLAN.md`** for hyperparameters (e.g. **z=32**, **K=5**, **τ**, LSTM **256**), the **dream loop**, and the **reward head** on **M**.
 
-Train the vision model (writes `checkpoints/vae.pt` by default):
+Checkpoints are organized per stage so V / M / C never collide:
 
-```bash
-python -m world_model.vae.train --data data/random_rollouts --epochs 20 --ckpt-out checkpoints/vae.pt
+```
+checkpoints/
+├── vae/         vae.pt + vae_epoch_NNN.pt
+├── rnn/         mdnrnn.pt + mdnrnn_epoch_NNN.pt
+└── controller/  (controller.pt + controller_gen_NNN.pt, once wired)
 ```
 
-Train the memory model on latent sequences (requires a VAE checkpoint):
+All trainers save the "latest" pointer every epoch, plus a versioned snapshot every `--save-every N` epochs (default 1). Resume any run from a snapshot with `--resume PATH` (restores model, optimizer, and the epoch counter).
+
+Train the vision model (writes `checkpoints/vae/vae.pt` by default):
 
 ```bash
-python -m world_model.rnn.train --data data/random_rollouts --vae-ckpt checkpoints/vae.pt
+python -m world_model.vae.train --data data/random_rollouts --epochs 30
+# resume:
+python -m world_model.vae.train --epochs 50 --resume checkpoints/vae/vae_epoch_030.pt
 ```
 
-Controller CMA-ES + full imagined rollouts: **`world_model/controller/train.py`** (stub until wired to dreams).
+Train the memory model on latent sequences (requires a VAE checkpoint; defaults to `checkpoints/vae/vae.pt`). Latents are pre-encoded with the frozen VAE once at startup, then training is pure LSTM/MDN — typically ~1 s/epoch on a modern GPU:
+
+```bash
+python -m world_model.rnn.train --data data/random_rollouts --epochs 30
+```
+
+Controller CMA-ES + full imagined rollouts: **`world_model/controller/train.py`** (CLI surface finalized, dream loop still a TODO). When wired, snapshots will land under `checkpoints/controller/`.
 
 ## Testing
 

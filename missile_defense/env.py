@@ -75,7 +75,7 @@ class MissileDefenseEnv(gym.Env):
 
     def step(self, action: np.ndarray):
         self.steps += 1
-        reward = -0.01 # Time penalty
+        reward = self.config.step_penalty
         terminated = False
         truncated = False
         
@@ -88,7 +88,7 @@ class MissileDefenseEnv(gym.Env):
         # 1. Update Turret
         self.last_laser_fired = self.turret.step(action_rot, action_fire)
         if self.last_laser_fired:
-            reward -= 0.05 # Conservation penalty
+            reward += self.config.fire_penalty
             
         # 2. Spawn Missiles
         self.spawn_timer -= 1
@@ -104,7 +104,7 @@ class MissileDefenseEnv(gym.Env):
         if self.last_laser_fired:
             hit_idx = check_laser_hits(self.turret, self.missiles, self.config)
             if hit_idx != -1:
-                reward += 1.0
+                reward += self.config.kill_reward
                 self.kills += 1
                 
                 # Add explosion
@@ -128,8 +128,10 @@ class MissileDefenseEnv(gym.Env):
                 m.alive = False
                 # Check if it hit the protected zone
                 if abs(m.x) <= self.config.protected_zone_width / 2:
-                    reward -= 10.0
+                    reward += self.config.protected_zone_penalty
                     terminated = True
+                else:
+                    reward += self.config.non_protected_impact_reward
                 
                 # Add explosion on ground
                 self.explosions.append(Explosion(m.x, 0))

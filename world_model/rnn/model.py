@@ -1,5 +1,9 @@
 """
-MDN-RNN: LSTMCell on [z_t, a_t] with mixture-density head for z_{t+1} and a reward head.
+MDN-RNN: batched LSTM on [z_t, a_t] with mixture-density head for z_{t+1} and a reward head.
+
+The training path uses cuDNN-fused `nn.LSTM` over the whole padded sequence in a single
+kernel launch (vastly faster than `LSTMCell` in a Python `for` loop). The dream-time
+autoregressive path calls the same module with `seq_len=1` to keep weights identical.
 """
 
 from __future__ import annotations
@@ -33,15 +37,39 @@ class MDNRNN(nn.Module):
         self.hidden_dim = hidden_dim
         self.num_gaussians = num_gaussians
 
-        self.lstm = nn.LSTMCell(latent_dim + action_dim, hidden_dim)
+        self.lstm = nn.LSTM(latent_dim + action_dim, hidden_dim, batch_first=True)
         out_per_dim = num_gaussians * 3
         self.z_head = nn.Linear(hidden_dim, latent_dim * out_per_dim)
         self.reward_head = nn.Linear(hidden_dim, 1)
 
+    def _format_state(
+        self,
+        h0: Optional[torch.Tensor],
+        c0: Optional[torch.Tensor],
+        batch: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Accept (B, H) or (1, B, H) and always return (1, B, H) for nn.LSTM."""
+        if h0 is None:
+            h0 = torch.zeros(1, batch, self.hidden_dim, device=device, dtype=dtype)
+        elif h0.dim() == 2:
+            h0 = h0.unsqueeze(0)
+        if c0 is None:
+            c0 = torch.zeros(1, batch, self.hidden_dim, device=device, dtype=dtype)
+        elif c0.dim() == 2:
+            c0 = c0.unsqueeze(0)
+        return h0, c0
+
     def split_z_params(self, h: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Return pi_logits, mu, log_std each [B, latent_dim, K]."""
-        b = h.size(0)
-        raw = self.z_head(h).view(b, self.latent_dim, self.num_gaussians, 3)
+        """Return pi_logits, mu, log_std each [..., latent_dim, K] given last-dim `hidden`.
+
+        Accepts any leading batch shape (e.g. [B, hidden] for one step or
+        [B, T, hidden] for whole-sequence prediction).
+        """
+        raw = self.z_head(h)
+        new_shape = raw.shape[:-1] + (self.latent_dim, self.num_gaussians, 3)
+        raw = raw.view(*new_shape)
         pi_logits = raw[..., 0]
         mu = raw[..., 1]
         log_std = raw[..., 2].clamp(self.LOG_STD_MIN, self.LOG_STD_MAX)
@@ -86,7 +114,7 @@ class MDNRNN(nn.Module):
         c0: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Teacher-forced roll for training.
+        Teacher-forced roll for training, in a single fused LSTM call.
 
         Args:
           z_seq: [B, T, latent_dim]
@@ -95,26 +123,42 @@ class MDNRNN(nn.Module):
         Returns:
           pi_logits, mu, log_std for steps 0..T-2 predicting z_{t+1}, each [B, T-1, D, K]
           reward_hat [B, T-1, 1] predicting reward after the transition
-          h_last, c_last: final LSTM state after processing step T-2
+          h_last, c_last: final LSTM state, shape [B, hidden] (squeezed)
         """
         b, t, _ = z_seq.shape
-        h = torch.zeros(b, self.hidden_dim, device=z_seq.device, dtype=z_seq.dtype) if h0 is None else h0
-        c = torch.zeros(b, self.hidden_dim, device=z_seq.device, dtype=z_seq.dtype) if c0 is None else c0
+        if t < 2:
+            raise ValueError(f"need at least 2 timesteps to unroll a transition, got T={t}")
+        # Feed inputs at steps 0..T-2; cuDNN handles the full sequence in one call.
+        x = torch.cat([z_seq[:, :-1], a_seq[:, :-1]], dim=-1)
+        h0_, c0_ = self._format_state(h0, c0, b, z_seq.device, z_seq.dtype)
+        out, (h_n, c_n) = self.lstm(x, (h0_, c0_))
+        pi_logits, mu, log_std = self.split_z_params(out)
+        reward_hat = self.reward_head(out)
+        return pi_logits, mu, log_std, reward_hat, h_n.squeeze(0), c_n.squeeze(0)
 
-        pi_list, mu_list, ls_list, r_list = [], [], [], []
-        for step in range(t - 1):
-            inp = torch.cat([z_seq[:, step], a_seq[:, step]], dim=-1)
-            h, c = self.lstm(inp, (h, c))
-            pi, mu, log_std = self.split_z_params(h)
-            pi_list.append(pi)
-            mu_list.append(mu)
-            ls_list.append(log_std)
-            r_list.append(self.reward_head(h))
+    def step_one(
+        self,
+        z_t: torch.Tensor,
+        a_t: torch.Tensor,
+        h: Optional[torch.Tensor] = None,
+        c: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Single-step roll for dream-time autoregressive use.
 
-        def stack_time(x: list) -> torch.Tensor:
-            return torch.stack(x, dim=1)
+        Args:
+          z_t: [B, latent_dim], a_t: [B, action_dim], h/c: [B, hidden] or None.
 
-        return stack_time(pi_list), stack_time(mu_list), stack_time(ls_list), stack_time(r_list), h, c
+        Returns the (pi_logits, mu, log_std) for sampling z_{t+1}, the predicted
+        reward `r_hat` for the transition, and the new (h, c) each [B, hidden].
+        """
+        b = z_t.size(0)
+        x = torch.cat([z_t, a_t], dim=-1).unsqueeze(1)
+        h0_, c0_ = self._format_state(h, c, b, z_t.device, z_t.dtype)
+        out, (h_n, c_n) = self.lstm(x, (h0_, c0_))
+        out = out.squeeze(1)
+        pi_logits, mu, log_std = self.split_z_params(out)
+        reward_hat = self.reward_head(out)
+        return pi_logits, mu, log_std, reward_hat, h_n.squeeze(0), c_n.squeeze(0)
 
     @staticmethod
     def sample_z(
