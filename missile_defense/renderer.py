@@ -182,13 +182,22 @@ class Renderer:
         
         pygame.display.flip()
         self.clock.tick(self.config.render_fps)
-        
-        # Handle events to prevent window from freezing
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                
-        return np.transpose(pygame.surfarray.array3d(self.human_surface), (1, 0, 2))
+
+        # Pump the event queue to keep the window responsive to the OS (drag,
+        # focus, etc.) but DO NOT consume events here. Application code (e.g.
+        # `view_teacher.py`) is responsible for handling QUIT / KEYDOWN so
+        # those events aren't swallowed before the application sees them.
+        pygame.event.pump()
+
+        # Defensive: if pygame display was torn down (window closed, pygame
+        # quit by another caller), bail out gracefully instead of crashing in
+        # surfarray.array3d.
+        if self.human_surface is None or not pygame.display.get_init():
+            return None
+        try:
+            return np.transpose(pygame.surfarray.array3d(self.human_surface), (1, 0, 2))
+        except pygame.error:
+            return None
 
     def close(self):
         pygame.quit()

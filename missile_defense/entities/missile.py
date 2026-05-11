@@ -70,6 +70,11 @@ class Missile(Entity):
 def spawn_missile(config, np_random) -> Missile:
     """
     Spawns a missile from off-screen, targeted at the radar ground span.
+
+    Targeting (iter3): with probability `config.protected_zone_target_prob` the
+    missile aims for somewhere inside the protected zone; otherwise it aims
+    for a non-protected x within the radar. This gives explicit control over
+    the threat rate (formerly an implicit ~15.6% from uniform sampling).
     """
     # Launch x: either [-1500, -1000] or [1000, 1500]
     # This ensures they spawn way back
@@ -79,9 +84,18 @@ def spawn_missile(config, np_random) -> Missile:
         x_start = np_random.uniform(1000, 1500)
         
     y_start = 0.0
-    
-    # Target x: [-256, 256]
-    x_target = np_random.uniform(-256, 256)
+
+    zone_half = config.protected_zone_width / 2.0
+    target_half = config.radar_radius
+    if np_random.random() < config.protected_zone_target_prob:
+        # Threat: target somewhere inside the protected zone (city column).
+        x_target = np_random.uniform(-zone_half, zone_half)
+    else:
+        # Non-threat: target outside the protected zone but within the radar.
+        # Uniform on [-target_half, -zone_half] ∪ [zone_half, target_half].
+        outside_half = target_half - zone_half
+        u = np_random.uniform(-outside_half, outside_half)
+        x_target = (u + zone_half) if u >= 0 else (u - zone_half)
     
     # Calculate required angle for this range given fixed v0
     R = abs(x_target - x_start)

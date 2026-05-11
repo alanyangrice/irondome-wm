@@ -43,6 +43,14 @@ class EnvConfig:
     # World & Observation
     radar_radius: float = 256.0
     protected_zone_width: float = 80.0 # x in [-40, 40]
+    # iter3: explicit control of how often spawned missiles target the
+    # protected zone. With uniform-over-radar targeting, ~15.6% of missiles
+    # would target the protected column (80 / 512). Raising this to 0.25 means
+    # ~25% of spawns are genuine threats, which:
+    #   - makes the teacher engage more often per episode → denser kill data
+    #   - makes M's done head see more terminal events
+    #   - keeps the env meaningfully harder than "fire-at-nothing wins"
+    protected_zone_target_prob: float = 0.25
     obs_width: int = 512
     obs_height: int = 256
     
