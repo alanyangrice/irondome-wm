@@ -1,6 +1,13 @@
 """
 Load `.npz` rollout files (full 512×256 RGB stored as uint8) and feed the VAE / MDN-RNN
-at paper-scale resolution by resizing on the fly (bilinear), without changing the simulator.
+at paper-scale resolution by resizing (bilinear), without changing the simulator.
+
+Why we pre-decompress at init: `np.savez_compressed` writes zlib-compressed `.npz` archives,
+and `np.load(..., mmap_mode="r")` silently falls back to non-mmap for compressed archives.
+That meant the old per-frame `__getitem__` re-decompressed an entire episode for every
+single frame fetched (catastrophic with shuffled mini-batches). We now decompress each
+episode exactly once at init, downsample to the VAE resolution, and store as packed
+uint8 in RAM. At 128×64 RGB and ~30k frames that's well under 1 GB.
 """
 
 from __future__ import annotations
@@ -60,11 +67,35 @@ def preprocess_obs_for_vae(
     return downsample_obs_chw(t, target_height, target_width)
 
 
+def _downsample_episode_uint8(
+    obs_thwc_uint8: np.ndarray,
+    target_height: int,
+    target_width: int,
+    chunk: int = 256,
+) -> np.ndarray:
+    """[T, H, W, 3] uint8 -> [T, 3, h, w] uint8 via bilinear resize.
+
+    Chunks through the time axis on CPU so we never materialize the whole episode as float32.
+    """
+    t_total = obs_thwc_uint8.shape[0]
+    out = np.empty((t_total, 3, target_height, target_width), dtype=np.uint8)
+    for start in range(0, t_total, chunk):
+        end = min(start + chunk, t_total)
+        chunk_thwc = obs_thwc_uint8[start:end]
+        chunk_chw = (
+            torch.from_numpy(np.ascontiguousarray(chunk_thwc)).permute(0, 3, 1, 2).contiguous().float()
+        )
+        small = F.interpolate(chunk_chw, size=(target_height, target_width), mode="bilinear", align_corners=False)
+        out[start:end] = small.round().clamp_(0, 255).to(torch.uint8).numpy()
+    return out
+
+
 class RolloutFrameDataset(Dataset):
     """
     Random-access frames across all episodes for VAE training.
 
-    Uses memory-mapped reads so episodes are not fully loaded into RAM.
+    Decompresses every `.npz` once at init, downsamples to the VAE resolution, and keeps
+    the result as packed uint8 in RAM. `__getitem__` is then a cheap index + float cast.
     """
 
     def __init__(
@@ -83,16 +114,23 @@ class RolloutFrameDataset(Dataset):
         self.vae_input_width = vae_input_width
         self.obs_scale = obs_scale
 
+        small_chunks: List[np.ndarray] = []
         self._lengths: List[int] = []
         self._offsets: List[int] = []
         cumulative = 0
         for path in self.paths:
-            with np.load(path, mmap_mode="r") as data:
-                t = int(data["obs"].shape[0])
+            with np.load(path) as data:
+                obs = np.asarray(data["obs"], dtype=np.uint8)
+            small = _downsample_episode_uint8(obs, vae_input_height, vae_input_width)
+            small_chunks.append(small)
+            t = int(small.shape[0])
             self._offsets.append(cumulative)
             self._lengths.append(t)
             cumulative += t
         self._total_steps = cumulative
+        self._frames = np.concatenate(small_chunks, axis=0) if small_chunks else np.empty(
+            (0, 3, vae_input_height, vae_input_width), dtype=np.uint8
+        )
 
     def __len__(self) -> int:
         return self._total_steps
@@ -100,27 +138,24 @@ class RolloutFrameDataset(Dataset):
     def _locate(self, index: int) -> Tuple[Path, int]:
         if index < 0 or index >= self._total_steps:
             raise IndexError(index)
-
         ends = [o + ln for o, ln in zip(self._offsets, self._lengths)]
         ep = bisect.bisect_right(ends, index)
         local = index - self._offsets[ep]
         return self.paths[ep], local
 
     def __getitem__(self, index: int) -> torch.Tensor:
-        path, t = self._locate(index)
-        with np.load(path, mmap_mode="r") as data:
-            obs = np.asarray(data["obs"][t], dtype=np.uint8)
-        return preprocess_obs_for_vae(
-            obs, self.vae_input_height, self.vae_input_width, self.obs_scale, device=None
-        )
+        if index < 0 or index >= self._total_steps:
+            raise IndexError(index)
+        frame_uint8 = self._frames[index]
+        return torch.from_numpy(frame_uint8).float() * self.obs_scale
 
 
 class RolloutSequenceDataset(Dataset):
     """
-    One item = full episode, for MDN-RNN (+ optional reward head) training.
+    One item = full episode, for MDN-RNN (+ reward head) training.
 
-    Returns dict with float tensors at VAE resolution for `obs`, raw-length vectors for
-    `action`, `reward`, `done`.
+    Also pre-decompresses each `.npz` once at init and stores each episode's frames as
+    packed uint8 at VAE resolution. Per-item conversion to float32 only happens on access.
     """
 
     def __init__(
@@ -139,26 +174,26 @@ class RolloutSequenceDataset(Dataset):
         self.vae_input_width = vae_input_width
         self.obs_scale = obs_scale
 
+        self._episodes: List[Dict[str, np.ndarray]] = []
+        for path in self.paths:
+            with np.load(path) as data:
+                obs = np.asarray(data["obs"], dtype=np.uint8)
+                action = np.asarray(data["action"], dtype=np.float32)
+                reward = np.asarray(data["reward"], dtype=np.float32)
+                done = np.asarray(data["done"], dtype=bool)
+            small = _downsample_episode_uint8(obs, vae_input_height, vae_input_width)
+            self._episodes.append({"obs": small, "action": action, "reward": reward, "done": done})
+
     def __len__(self) -> int:
-        return len(self.paths)
+        return len(self._episodes)
 
     def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:
-        path = self.paths[index]
-        with np.load(path, mmap_mode="r") as data:
-            obs = np.asarray(data["obs"], dtype=np.uint8)
-            action = torch.from_numpy(np.asarray(data["action"], dtype=np.float32))
-            reward = torch.from_numpy(np.asarray(data["reward"], dtype=np.float32))
-            done = torch.from_numpy(np.asarray(data["done"], dtype=np.bool))
-
-        frames_chw = torch.from_numpy(obs).permute(0, 3, 1, 2).contiguous().float() * self.obs_scale
-        obs_small = downsample_obs_chw(frames_chw, self.vae_input_height, self.vae_input_width)
-
-        return {
-            "obs": obs_small,
-            "action": action,
-            "reward": reward,
-            "done": done,
-        }
+        ep = self._episodes[index]
+        obs_small = torch.from_numpy(ep["obs"]).float() * self.obs_scale
+        action = torch.from_numpy(ep["action"])
+        reward = torch.from_numpy(ep["reward"])
+        done = torch.from_numpy(ep["done"])
+        return {"obs": obs_small, "action": action, "reward": reward, "done": done}
 
 
 def collate_padded_episodes(batch: Sequence[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:

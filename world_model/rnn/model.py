@@ -13,6 +13,13 @@ import torch.nn.functional as F
 
 
 class MDNRNN(nn.Module):
+    # Bounds on the predicted log-stddev. -7 -> std ~9e-4 (tight enough for clustered
+    # latents, well away from float underflow). +5 -> std ~148 (much wider than any
+    # realistic unit-variance VAE code, but finite to keep the NLL well-defined when
+    # an outlier target arrives early in training).
+    LOG_STD_MIN: float = -7.0
+    LOG_STD_MAX: float = 5.0
+
     def __init__(
         self,
         latent_dim: int,
@@ -37,7 +44,7 @@ class MDNRNN(nn.Module):
         raw = self.z_head(h).view(b, self.latent_dim, self.num_gaussians, 3)
         pi_logits = raw[..., 0]
         mu = raw[..., 1]
-        log_std = raw[..., 2]
+        log_std = raw[..., 2].clamp(self.LOG_STD_MIN, self.LOG_STD_MAX)
         return pi_logits, mu, log_std
 
     @staticmethod

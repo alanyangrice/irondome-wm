@@ -80,7 +80,23 @@ class VAE(nn.Module):
         return recon, mu, logvar
 
     @staticmethod
-    def loss(recon: torch.Tensor, x: torch.Tensor, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
-        recon_loss = F.mse_loss(recon, x, reduction="mean")
-        kl = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
-        return recon_loss + kl
+    def loss(
+        recon: torch.Tensor,
+        x: torch.Tensor,
+        mu: torch.Tensor,
+        logvar: torch.Tensor,
+        beta: float = 1.0,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Standard per-image ELBO: sum over pixels/latents, mean over batch.
+
+        Returns (total, recon, kl) so callers can log each term. The previous
+        formulation averaged over both pixel count (3*H*W) and latent dim, which
+        massively over-weighted KL relative to recon and risks posterior collapse.
+        """
+        # Reconstruction: sum over C*H*W per image, mean over batch.
+        recon_per_image = F.mse_loss(recon, x, reduction="none").flatten(1).sum(dim=1)
+        recon_loss = recon_per_image.mean()
+        # KL[q(z|x) || N(0, I)]: sum over latents per image, mean over batch.
+        kl_per_image = -0.5 * (1.0 + logvar - mu.pow(2) - logvar.exp()).sum(dim=1)
+        kl = kl_per_image.mean()
+        return recon_loss + beta * kl, recon_loss, kl

@@ -118,9 +118,12 @@ class MissileDefenseEnv(gym.Env):
                         int(self.current_spawn_interval * 0.9)
                     )
                     
-        # 5. Check Ground Impacts
+        # 5. Check Ground Impacts (and drop laser-killed missiles)
         alive_missiles = []
         for m in self.missiles:
+            if not m.alive:
+                # Killed by laser earlier this step; drop from list so max_missiles isn't permanently saturated.
+                continue
             if m.y <= 0:
                 m.alive = False
                 # Check if it hit the protected zone
@@ -152,9 +155,6 @@ class MissileDefenseEnv(gym.Env):
             b.step(self.config)
         self.birds = [b for b in self.birds if abs(b.x) < self.config.radar_radius + 150]
             
-        while len(self.birds) < self.config.max_birds:
-            self.birds.append(spawn_bird(self.config, self.np_random))
-        
         while len(self.birds) < self.config.max_birds:
             self.birds.append(spawn_bird(self.config, self.np_random))
         
